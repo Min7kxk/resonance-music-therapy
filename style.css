@@ -906,7 +906,24 @@ body::after {
   padding: 3px 12px;
   border-radius: 10px;
   display: inline-block;
+  margin-bottom: 6px;
+}
+
+.player-sound-badge {
+  font-size: 11px;
+  color: #7eb8a0;
+  background: rgba(126, 184, 160, 0.1);
+  padding: 4px 12px;
+  border-radius: 10px;
+  display: inline-block;
   margin-bottom: 10px;
+  font-weight: 500;
+  animation: soundBadgePulse 3s ease-in-out infinite;
+}
+
+@keyframes soundBadgePulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
 }
 
 .player-reason {

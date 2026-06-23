@@ -64,6 +64,7 @@
   const playerProgressFill = $('#playerProgressFill');
   const playerCurrentTime = $('#playerCurrentTime');
   const playerTotalTime = $('#playerTotalTime');
+  const playerSoundBadge = $('#playerSoundBadge');
   const btnComplete = $('#btnComplete');
 
   // AI
@@ -237,31 +238,299 @@
     }
   }
 
+  // ==================== Web Audio API 疗愈音效引擎 ====================
+  const SoundEngine = (function () {
+    let ctx = null;
+    let masterGain = null;
+    let activeNodes = [];
+    let isRunning = false;
+
+    function getCtx() {
+      if (!ctx) {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        masterGain = ctx.createGain();
+        masterGain.gain.value = 0.45;
+        masterGain.connect(ctx.destination);
+      }
+      return ctx;
+    }
+
+    function ensureResumed() {
+      const c = getCtx();
+      if (c.state === 'suspended') c.resume();
+    }
+
+    function stopAll() {
+      activeNodes.forEach(n => {
+        try { n.stop(); } catch (e) { /* already stopped */ }
+        try { n.disconnect(); } catch (e) { /* */ }
+      });
+      try {
+        activeNodes.forEach(n => {
+          if (n.osc) n.osc.stop();
+          if (n.gain) n.gain.disconnect();
+        });
+      } catch (e) { /* */ }
+      activeNodes = [];
+      isRunning = false;
+    }
+
+    // ---- 粉红噪音生成器（Paul Kellet 简化算法） ----
+    function createPinkNoise(duration) {
+      const c = getCtx();
+      const bufSize = c.sampleRate * duration;
+      const buf = c.createBuffer(1, bufSize, c.sampleRate);
+      const data = buf.getChannelData(0);
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+      for (let i = 0; i < bufSize; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
+        b6 = white * 0.115926;
+      }
+      return buf;
+    }
+
+    // ---- 各处方音效 ----
+
+    // 处方1：深睡眠修复 — 低频载波 + 双耳节拍 + 呼吸调制
+    function startDeepSleep() {
+      stopAll();
+      ensureResumed();
+      const c = getCtx();
+      const now = c.currentTime;
+      const dur = 3600;
+
+      // 左耳 200Hz 载波
+      const oscL = c.createOscillator();
+      oscL.type = 'sine';
+      oscL.frequency.value = 200;
+      const gainL = c.createGain();
+      gainL.gain.value = 0;
+      const panL = c.createStereoPanner();
+      panL.pan.value = -0.7;
+      oscL.connect(gainL);
+      gainL.connect(panL);
+      panL.connect(masterGain);
+
+      // 右耳 204Hz → 产生 4Hz 双耳节拍
+      const oscR = c.createOscillator();
+      oscR.type = 'sine';
+      oscR.frequency.value = 204;
+      const gainR = c.createGain();
+      gainR.gain.value = 0;
+      const panR = c.createStereoPanner();
+      panR.pan.value = 0.7;
+      oscR.connect(gainR);
+      gainR.connect(panR);
+      panR.connect(masterGain);
+
+      // 低频底噪层 ~62Hz
+      const oscLow = c.createOscillator();
+      oscLow.type = 'sine';
+      oscLow.frequency.value = 62;
+      const gainLow = c.createGain();
+      gainLow.gain.value = 0;
+      oscLow.connect(gainLow);
+      gainLow.connect(masterGain);
+
+      // 呼吸调制 LFO ~0.1Hz (6次/分钟)
+      const lfo = c.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = 0.1;
+      const lfoGain = c.createGain();
+      lfoGain.gain.value = 0.12;
+      lfo.connect(lfoGain);
+      lfoGain.connect(gainL.gain);
+      lfoGain.connect(gainR.gain);
+      lfoGain.connect(gainLow.gain);
+
+      // 淡入
+      gainL.gain.setValueAtTime(0, now);
+      gainL.gain.linearRampToValueAtTime(0.14, now + 3);
+      gainR.gain.setValueAtTime(0, now);
+      gainR.gain.linearRampToValueAtTime(0.14, now + 3);
+      gainLow.gain.setValueAtTime(0, now);
+      gainLow.gain.linearRampToValueAtTime(0.08, now + 3);
+
+      oscL.start(now); oscR.start(now); oscLow.start(now); lfo.start(now);
+      oscL.stop(now + dur); oscR.stop(now + dur); oscLow.stop(now + dur); lfo.stop(now + dur);
+
+      activeNodes = [oscL, oscR, oscLow, lfo, gainL, gainR, gainLow, lfoGain, panL, panR];
+      isRunning = true;
+    }
+
+    // 处方2：午后焦虑舒缓 — 五声音阶 + 雨声
+    function startAnxietyRelief() {
+      stopAll();
+      ensureResumed();
+      const c = getCtx();
+      const now = c.currentTime;
+
+      // 五声音阶频率 (D大调：D E F# A B)
+      const scale = [293.66, 329.63, 369.99, 440.00, 493.88];
+      const noteGain = c.createGain();
+      noteGain.gain.value = 0.09;
+      noteGain.connect(masterGain);
+
+      const noteNodes = [];
+      // 随机漫步五声音阶
+      let noteIdx = 2;
+      const noteDuration = 3.5;
+      const totalDuration = 3600;
+      const numNotes = Math.floor(totalDuration / noteDuration);
+
+      for (let i = 0; i < numNotes; i++) {
+        const t = now + i * noteDuration;
+        const freq = scale[noteIdx];
+
+        const osc = c.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+
+        const g = c.createGain();
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.055, t + 1.2);
+        g.gain.setValueAtTime(0.055, t + noteDuration - 1.0);
+        g.gain.linearRampToValueAtTime(0, t + noteDuration);
+
+        osc.connect(g);
+        g.connect(noteGain);
+        osc.start(t);
+        osc.stop(t + noteDuration + 0.1);
+
+        activeNodes.push(osc, g);
+
+        // 随机漫步
+        const moves = [-1, 0, 1, 1, 2];
+        noteIdx = Math.max(0, Math.min(4, noteIdx + moves[Math.floor(Math.random() * moves.length)]));
+      }
+
+      // 模拟雨声（滤波白噪音）
+      const noiseBuf = createPinkNoise(60);
+      const noiseSrc = c.createBufferSource();
+      noiseSrc.buffer = noiseBuf;
+      noiseSrc.loop = true;
+      const noiseFilter = c.createBiquadFilter();
+      noiseFilter.type = 'lowpass';
+      noiseFilter.frequency.value = 800;
+      noiseFilter.Q.value = 0.5;
+      const noiseGain = c.createGain();
+      noiseGain.gain.setValueAtTime(0, now);
+      noiseGain.gain.linearRampToValueAtTime(0.04, now + 2);
+
+      noiseSrc.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(masterGain);
+      noiseSrc.start(now);
+      noiseSrc.stop(now + totalDuration);
+
+      activeNodes.push(noiseSrc, noiseFilter, noiseGain, noteGain);
+      isRunning = true;
+    }
+
+    // 处方3：专注力提升 — 粉红噪音 + α波 (10Hz) 脉冲调制
+    function startFocus() {
+      stopAll();
+      ensureResumed();
+      const c = getCtx();
+      const now = c.currentTime;
+      const dur = 3600;
+
+      const noiseBuf = createPinkNoise(60);
+      const noiseSrc = c.createBufferSource();
+      noiseSrc.buffer = noiseBuf;
+      noiseSrc.loop = true;
+
+      // α波 LFO @ 10Hz
+      const lfo = c.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = 10;
+      const lfoGain = c.createGain();
+      lfoGain.gain.value = 0.03;
+      lfo.connect(lfoGain);
+
+      const noiseGain = c.createGain();
+      noiseGain.gain.setValueAtTime(0, now);
+      noiseGain.gain.linearRampToValueAtTime(0.07, now + 2);
+
+      // LFO 调制噪音增益 → 产生 10Hz 波动
+      lfoGain.connect(noiseGain.gain);
+
+      noiseSrc.connect(noiseGain);
+      noiseGain.connect(masterGain);
+
+      noiseSrc.start(now);
+      lfo.start(now);
+      noiseSrc.stop(now + dur);
+      lfo.stop(now + dur);
+
+      activeNodes = [noiseSrc, lfo, noiseGain, lfoGain];
+      isRunning = true;
+    }
+
+    return {
+      startDeepSleep,
+      startAnxietyRelief,
+      startFocus,
+      stop: stopAll,
+      isRunning: () => isRunning,
+      init: ensureResumed,
+    };
+  })();
+
   // ==================== 音乐播放器 ====================
   const planData = [
     {
       name: '深睡眠修复处方',
       type: '睡眠 / 低频 / 呼吸放松',
       reason: '基于您近期的夜间焦虑指标和入睡困难情况，此处方专为改善睡眠质量设计。使用低频环境音结合呼吸引导，帮助身体从高唤醒状态逐步过渡到放松状态。',
+      sound: 'sleep',
     },
     {
       name: '午后焦虑舒缓处方',
       type: '焦虑缓解 / 钢琴 / 环境音',
       reason: '针对您午后时段的焦虑指标，此处方选用轻柔钢琴与自然环境音，帮助平复午后焦虑情绪，恢复内心平静。',
+      sound: 'relief',
     },
     {
       name: '专注力提升处方',
       type: '专注 / 白噪音 / 稳定节拍',
       reason: '基于您近期的专注力需求，此处方使用稳定节拍和白噪音背景，帮助大脑进入专注状态，适合学习与工作场景。',
+      sound: 'focus',
     },
   ];
 
-  function openPlayer(planIndex) {
+  function startSoundForPreset(soundType) {
+    switch (soundType) {
+      case 'sleep': SoundEngine.startDeepSleep(); break;
+      case 'relief': SoundEngine.startAnxietyRelief(); break;
+      case 'focus': SoundEngine.startFocus(); break;
+      default: SoundEngine.startFocus();
+    }
+  }
+
+  // 音效说明映射
+  const soundBadgeText = {
+    sleep: '🔊 实时合成：双耳节拍 (4Hz) + 低频共振 (62Hz) + 呼吸调制',
+    relief: '🔊 实时合成：五声音阶漫步 + 模拟雨声白噪音',
+    focus: '🔊 实时合成：粉红噪音 + α脑波 (10Hz) 脉冲调制',
+  };
+
+  function openPlayer(planIndex, soundOverride) {
     state.selectedPlanIndex = planIndex;
-    const data = planData[planIndex];
+    const data = planData[planIndex] || { name: '', type: '', reason: '', sound: 'focus' };
     playerPrescription.textContent = data.name;
     playerType.textContent = data.type;
     playerReason.textContent = '💡 推荐原因：' + data.reason;
+
+    state.playerSound = soundOverride || data.sound;
+    playerSoundBadge.textContent = soundBadgeText[state.playerSound] || soundBadgeText.focus;
 
     // 重置播放状态
     state.isPlaying = false;
@@ -283,6 +552,7 @@
   function closePlayer() {
     clearInterval(state.playerTimer);
     state.playerTimer = null;
+    SoundEngine.stop();
     state.isPlaying = false;
     playerDisc.classList.remove('playing');
     playerOverlay.classList.remove('active');
@@ -307,12 +577,15 @@
     playerPlayBtn.textContent = '⏸';
     playerDisc.classList.add('playing');
 
+    // 启动真正音效
+    SoundEngine.init();
+    startSoundForPreset(state.playerSound);
+
     state.playerTimer = setInterval(() => {
       state.playerSeconds++;
       const pct = (state.playerSeconds / state.playerSimSeconds) * 100;
       playerProgressFill.style.width = Math.min(pct, 100) + '%';
 
-      // 显示时间按比例映射到显示总时长
       const displaySec = Math.floor((state.playerSeconds / state.playerSimSeconds) * state.playerDisplayTotal);
       playerCurrentTime.textContent = formatTime(Math.min(displaySec, state.playerDisplayTotal));
 
@@ -329,6 +602,7 @@
     state.isPlaying = false;
     playerPlayBtn.textContent = '▶';
     playerDisc.classList.remove('playing');
+    SoundEngine.stop();
     clearInterval(state.playerTimer);
     state.playerTimer = null;
   }
@@ -345,7 +619,6 @@
     updateAllProgress();
     closePlayer();
 
-    // 模拟数据联动：更新消费和时长
     monthlyCost.textContent = String(250 + state.healedCount * 50);
     healingHours.textContent = (2.1 + state.healedCount * 0.42).toFixed(1);
 
@@ -569,10 +842,19 @@
     playerType.textContent = prescription.tone || 'AI 定制处方';
     playerReason.textContent = '💡 推荐原因：' + (prescription.suitable || 'AI 根据您的多模态评估数据定制');
 
+    // 根据处方名称匹配音效类型
+    const name = prescription.name;
+    if (name.includes('睡眠') || name.includes('深睡')) state.playerSound = 'sleep';
+    else if (name.includes('焦虑') || name.includes('放松') || name.includes('舒缓')) state.playerSound = 'relief';
+    else if (name.includes('专注')) state.playerSound = 'focus';
+    else state.playerSound = 'sleep';
+
+    playerSoundBadge.textContent = soundBadgeText[state.playerSound] || soundBadgeText.focus;
+
     // 根据处方时长动态设置显示时长
     const durMap = { '30分钟': 1800, '15分钟': 900, '25分钟': 1500 };
     state.playerDisplayTotal = durMap[prescription.duration] || 1800;
-    state.playerSimSeconds = 30; // 演示模拟保持30秒
+    state.playerSimSeconds = 30;
 
     state.isPlaying = false;
     state.playerSeconds = 0;
