@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>声愈 Resonance - 个性化音乐疗愈订阅服务</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app-container">
+
+  <!-- ========== 头部：月份导航 ========== -->
+  <header class="month-header">
+    <button class="month-arrow" id="monthPrev" aria-label="上一个月">‹</button>
+    <div class="month-title-area">
+      <h1 class="month-title" id="monthTitle">2026年6月</h1>
+      <div class="month-subtitle">Resonance · 月度疗愈仪表盘</div>
+    </div>
+    <button class="month-arrow" id="monthNext" aria-label="下一个月">›</button>
+  </header>
+
+  <!-- ========== 消费 & 时长概览 ========== -->
+  <div class="stats-row">
+    <div class="stat-item">
+      <span class="stat-label">本月消费</span>
+      <span class="stat-value">¥<span id="monthlyCost">250</span></span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-item">
+      <span class="stat-label">疗愈时长</span>
+      <span class="stat-value"><span id="healingHours">2.1</span> h</span>
+    </div>
+  </div>
+
+  <!-- ========== 三张概览卡片 ========== -->
+  <section class="overview-cards">
+    <!-- 卡片1：疗愈概览 -->
+    <div class="glass-card overview-card">
+      <div class="card-icon">📊</div>
+      <h3 class="card-title">疗愈概览</h3>
+      <div class="progress-info">
+        <span class="progress-text">本月完成：<strong id="completedCount">0</strong> / 5</span>
+        <span class="progress-label" id="progressLabel">已完成</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+      </div>
+      <p class="card-desc">本月已完成 <span id="completedDesc">0</span> 次音乐疗愈练习</p>
+    </div>
+
+    <!-- 卡片2：本月聚焦 -->
+    <div class="glass-card overview-card">
+      <div class="card-icon">🌙</div>
+      <h3 class="card-title">本月聚焦</h3>
+      <div class="focus-content">
+        <span class="focus-badge">睡眠修复</span>
+        <p class="focus-desc">正在为你精心策划中……</p>
+      </div>
+    </div>
+
+    <!-- 卡片3：月度洞察 -->
+    <div class="glass-card insight-card">
+      <div class="card-icon">💡</div>
+      <p class="insight-text">夜间焦虑偏高，建议增加睡前低频舒缓音乐</p>
+      <span class="insight-tag">AI 洞察</span>
+    </div>
+  </section>
+
+  <!-- ========== 分段导航 ========== -->
+  <nav class="segment-nav">
+    <button class="segment-btn" data-tab="monthly">月度视图</button>
+    <button class="segment-btn active" data-tab="plan">疗愈计划</button>
+    <button class="segment-btn" data-tab="report">报告</button>
+  </nav>
+
+  <!-- ========== Tab 内容区 ========== -->
+
+  <!-- 月度视图 -->
+  <section class="tab-content" id="tabMonthly" style="display:none;">
+    <div class="tab-inner">
+
+      <!-- HRV 卡片 -->
+      <div class="glass-card data-card">
+        <div class="data-card-header">
+          <span class="data-icon">🫀</span>
+          <h3>HRV 心率变异性</h3>
+        </div>
+        <div class="data-main">
+          <span class="data-number">42 <small>ms</small></span>
+          <span class="data-status status-warning">轻度压力</span>
+        </div>
+        <div class="data-bar">
+          <div class="data-bar-fill data-bar-hrv" style="width: 42%;"></div>
+        </div>
+        <p class="data-explain">HRV 是心率变异性，反映压力、疲劳和自主神经调节能力的生理指标。数值越高通常代表身体恢复能力越好。</p>
+      </div>
+
+      <!-- 睡眠质量卡片 -->
+      <div class="glass-card data-card">
+        <div class="data-card-header">
+          <span class="data-icon">😴</span>
+          <h3>睡眠质量</h3>
+        </div>
+        <div class="data-main">
+          <span class="data-number">68 <small>/ 100</small></span>
+          <span class="data-status status-caution">待改善</span>
+        </div>
+        <div class="data-bar">
+          <div class="data-bar-fill data-bar-sleep" style="width: 68%;"></div>
+        </div>
+        <ul class="data-details">
+          <li>入睡时间：<strong>38 分钟</strong></li>
+          <li>夜间醒来：<strong>2 次</strong></li>
+        </ul>
+        <p class="data-explain">睡前减少高刺激内容，增加低频舒缓音乐。保持规律作息有助于缩短入睡时间。</p>
+      </div>
+
+      <!-- 压力指数卡片 -->
+      <div class="glass-card data-card">
+        <div class="data-card-header">
+          <span class="data-icon">🧘</span>
+          <h3>压力指数</h3>
+        </div>
+        <div class="data-main">
+          <span class="data-number">72 <small>/ 100</small></span>
+          <span class="data-status status-warning">偏高</span>
+        </div>
+        <div class="data-bar">
+          <div class="data-bar-fill data-bar-stress" style="width: 72%;"></div>
+        </div>
+        <p class="data-explain">建议进行 15 分钟焦虑舒缓音乐练习。通过音乐引导呼吸，可以有效降低皮质醇水平。</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- 疗愈计划 -->
+  <section class="tab-content" id="tabPlan" style="display:block;">
+    <div class="tab-inner">
+      <h2 class="section-title">今天 <span class="title-date" id="todayDate"></span></h2>
+
+      <div class="plan-cards" id="planCards">
+        <!-- 处方1：深睡眠修复 -->
+        <div class="glass-card plan-card" data-plan="0">
+          <div class="plan-card-top">
+            <span class="plan-scene">🌙 睡前</span>
+            <span class="plan-time">22:30 - 23:00</span>
+          </div>
+          <h3 class="plan-name">深睡眠修复</h3>
+          <div class="plan-tags">
+            <span>睡眠</span><span>低频</span><span>呼吸放松</span>
+          </div>
+          <p class="plan-scene-desc">🏠 适合场景：卧室、睡前、独处</p>
+          <div class="plan-actions">
+            <button class="btn-primary btn-start-healing">开始疗愈</button>
+            <button class="btn-secondary btn-add-feedback">添加反馈</button>
+          </div>
+        </div>
+
+        <!-- 处方2：午后焦虑舒缓 -->
+        <div class="glass-card plan-card" data-plan="1">
+          <div class="plan-card-top">
+            <span class="plan-scene">☀️ 午休后</span>
+            <span class="plan-time">14:00 - 14:15</span>
+          </div>
+          <h3 class="plan-name">午后焦虑舒缓</h3>
+          <div class="plan-tags">
+            <span>焦虑缓解</span><span>钢琴</span><span>环境音</span>
+          </div>
+          <p class="plan-scene-desc">🏠 适合场景：午休、独处、通勤后</p>
+          <div class="plan-actions">
+            <button class="btn-primary btn-start-healing">开始疗愈</button>
+          </div>
+        </div>
+
+        <!-- 处方3：专注力提升 -->
+        <div class="glass-card plan-card" data-plan="2">
+          <div class="plan-card-top">
+            <span class="plan-scene">📚 学习/工作</span>
+            <span class="plan-time">19:30 - 20:00</span>
+          </div>
+          <h3 class="plan-name">专注力提升</h3>
+          <div class="plan-tags">
+            <span>专注</span><span>白噪音</span><span>稳定节拍</span>
+          </div>
+          <p class="plan-scene-desc">🏠 适合场景：自习室、办公室、阅读前</p>
+          <div class="plan-actions">
+            <button class="btn-primary btn-start-healing">开始疗愈</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 报告 -->
+  <section class="tab-content" id="tabReport" style="display:none;">
+    <div class="tab-inner">
+      <h2 class="section-title">月度疗愈报告</h2>
+      <p class="report-period" id="reportPeriod">2026年6月</p>
+
+      <!-- 报告摘要卡片 -->
+      <div class="glass-card report-summary-card">
+        <div class="report-grid">
+          <div class="report-item">
+            <span class="report-item-icon">🎵</span>
+            <span class="report-item-label">本月完成疗愈</span>
+            <span class="report-item-value" id="reportCompleted">0 / 5</span>
+          </div>
+          <div class="report-item">
+            <span class="report-item-icon">😴</span>
+            <span class="report-item-label">平均睡眠评分</span>
+            <span class="report-item-value">68</span>
+          </div>
+          <div class="report-item">
+            <span class="report-item-icon">🧘</span>
+            <span class="report-item-label">平均压力指数</span>
+            <span class="report-item-value">72</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 情绪趋势 -->
+      <div class="glass-card report-trend-card">
+        <h3>📈 情绪改善趋势</h3>
+        <p class="trend-placeholder" id="trendText">暂无足够数据，完成 3 次疗愈后生成趋势报告</p>
+        <div class="trend-bar" id="trendBar" style="display:none;">
+          <div class="trend-bar-fill" style="width: 45%;"></div>
+          <span>趋势向好 ↑</span>
+        </div>
+      </div>
+
+      <!-- AI 总结 -->
+      <div class="glass-card report-ai-card">
+        <h3>🤖 AI 月度总结</h3>
+        <p id="aiSummary">本月你的主要问题集中在睡眠质量下降和夜间焦虑。建议继续使用深睡眠修复处方，并在下午增加一次短时焦虑舒缓练习。</p>
+      </div>
+
+      <!-- ===== 订阅产品模块 ===== -->
+      <h2 class="section-title" style="margin-top: 28px;">订阅方案</h2>
+
+      <div class="subscribe-cards">
+        <!-- 基础版 -->
+        <div class="glass-card subscribe-card" data-plan-name="基础版 · 月度订阅">
+          <div class="sub-plan-header">
+            <h3>基础版</h3>
+            <span class="sub-badge">月度订阅</span>
+          </div>
+          <div class="sub-price">¥29<span class="sub-period">/月</span></div>
+          <ul class="sub-features">
+            <li>标准化音乐疗愈处方</li>
+            <li>基础睡眠与压力监测</li>
+            <li>AI 推荐基础方案</li>
+          </ul>
+        </div>
+
+        <!-- 进阶版（推荐） -->
+        <div class="glass-card subscribe-card subscribe-recommend" data-plan-name="进阶版 · 季度订阅">
+          <div class="sub-recommend-badge">🌟 推荐方案</div>
+          <div class="sub-plan-header">
+            <h3>进阶版</h3>
+            <span class="sub-badge">季度订阅</span>
+          </div>
+          <div class="sub-price">¥79<span class="sub-period">/季度</span></div>
+          <ul class="sub-features">
+            <li>轻度个性化音乐处方</li>
+            <li>月度心理状态复盘</li>
+            <li>干预方案动态迭代</li>
+            <li>专属 AI 疗愈助手</li>
+          </ul>
+        </div>
+
+        <!-- 尊享版 -->
+        <div class="glass-card subscribe-card" data-plan-name="尊享版 · 年度订阅">
+          <div class="sub-plan-header">
+            <h3>尊享版</h3>
+            <span class="sub-badge">年度订阅</span>
+          </div>
+          <div class="sub-price">¥399<span class="sub-period">/年</span></div>
+          <ul class="sub-features">
+            <li>1对1专属音乐治疗师服务</li>
+            <li>个性化深度音乐处方</li>
+            <li>覆盖睡眠、焦虑、专注、情绪管理等场景</li>
+            <li>季度专属疗愈报告</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ========== 音乐播放器弹窗 ========== -->
+  <div class="player-overlay" id="playerOverlay">
+    <div class="player-panel glass-card">
+      <button class="player-close" id="playerClose">✕</button>
+      <div class="player-content">
+        <div class="player-visual">
+          <div class="player-disc" id="playerDisc"></div>
+        </div>
+        <h3 class="player-prescription" id="playerPrescription">深睡眠修复处方</h3>
+        <span class="player-type" id="playerType">睡眠 / 低频 / 呼吸放松</span>
+        <p class="player-reason" id="playerReason">💡 推荐原因：基于您近期的夜间焦虑指标和入睡困难情况，此处方专为改善睡眠质量设计</p>
+
+        <div class="player-controls">
+          <button class="player-btn player-btn-play" id="playerPlayBtn">▶</button>
+        </div>
+
+        <div class="player-progress">
+          <div class="player-progress-bar" id="playerProgressBar">
+            <div class="player-progress-fill" id="playerProgressFill"></div>
+          </div>
+          <div class="player-time">
+            <span id="playerCurrentTime">00:00</span>
+            <span id="playerTotalTime">30:00</span>
+          </div>
+        </div>
+
+        <button class="btn-primary btn-complete" id="btnComplete">完成本次疗愈</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== AI 悬浮按钮 ========== -->
+  <button class="ai-fab" id="aiFab">
+    <span class="ai-fab-text">AI</span>
+  </button>
+
+  <!-- ========== AI 聊天抽屉 ========== -->
+  <div class="ai-drawer-overlay" id="aiDrawerOverlay"></div>
+  <div class="ai-drawer" id="aiDrawer">
+    <div class="ai-drawer-header">
+      <div class="ai-drawer-title-area">
+        <h3>声愈 AI</h3>
+        <span class="ai-drawer-badge">音乐疗愈助手</span>
+      </div>
+      <button class="ai-drawer-close" id="aiDrawerClose">✕</button>
+    </div>
+
+    <div class="ai-drawer-body" id="aiChatBody">
+      <!-- 开场白 -->
+      <div class="ai-message ai-message-bot">
+        <div class="ai-avatar">🤖</div>
+        <div class="ai-bubble">
+          <p>你好，我是声愈 AI。</p>
+          <p>告诉我你现在的状态，比如睡不着、焦虑、压力大、需要专注，我会为你生成个性化音乐疗愈方案。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 快捷需求按钮 -->
+    <div class="ai-quick-btns" id="aiQuickBtns">
+      <button class="ai-quick-btn">我今晚睡不着</button>
+      <button class="ai-quick-btn">我现在有点焦虑</button>
+      <button class="ai-quick-btn">我需要学习专注</button>
+      <button class="ai-quick-btn">我想放松情绪</button>
+      <button class="ai-quick-btn">不知道听什么，让 AI 推荐</button>
+    </div>
+  </div>
+
+  <!-- ========== Toast 轻提示 ========== -->
+  <div class="toast" id="toast"></div>
+
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
