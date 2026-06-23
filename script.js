@@ -238,7 +238,7 @@
     }
   }
 
-  // ==================== Web Audio API 疗愈音效引擎 ====================
+  // ==================== Web Audio API 音乐疗愈引擎 ====================
   const SoundEngine = (function () {
     let ctx = null;
     let masterGain = null;
@@ -249,7 +249,7 @@
       if (!ctx) {
         ctx = new (window.AudioContext || window.webkitAudioContext)();
         masterGain = ctx.createGain();
-        masterGain.gain.value = 0.45;
+        masterGain.gain.value = 0.4;
         masterGain.connect(ctx.destination);
       }
       return ctx;
@@ -262,43 +262,130 @@
 
     function stopAll() {
       activeNodes.forEach(n => {
-        try { n.stop(); } catch (e) { /* already stopped */ }
-        try { n.disconnect(); } catch (e) { /* */ }
+        try { n.stop(); } catch (e) {}
+        try { n.disconnect(); } catch (e) {}
       });
-      try {
-        activeNodes.forEach(n => {
-          if (n.osc) n.osc.stop();
-          if (n.gain) n.gain.disconnect();
-        });
-      } catch (e) { /* */ }
       activeNodes = [];
       isRunning = false;
     }
 
-    // ---- 粉红噪音生成器（Paul Kellet 简化算法） ----
-    function createPinkNoise(duration) {
+    // ---- 简易混响（多延迟线模拟空间感） ----
+    function createReverb(inputNode, mix, duration) {
       const c = getCtx();
-      const bufSize = c.sampleRate * duration;
-      const buf = c.createBuffer(1, bufSize, c.sampleRate);
-      const data = buf.getChannelData(0);
+      const dry = c.createGain();
+      dry.gain.value = 1 - mix;
+      const wet = c.createGain();
+      wet.gain.value = mix;
+
+      const delays = [0.037, 0.043, 0.051, 0.059, 0.067, 0.073];
+      const feedbackGains = [0.25, 0.22, 0.19, 0.17, 0.15, 0.13];
+
+      delays.forEach((dt, i) => {
+        const d = c.createDelay(duration || 2);
+        d.delayTime.value = dt;
+        const g = c.createGain();
+        g.gain.value = feedbackGains[i];
+        const f = c.createBiquadFilter();
+        f.type = 'lowpass';
+        f.frequency.value = 3000 - i * 300;
+
+        inputNode.connect(d);
+        d.connect(f);
+        f.connect(g);
+        g.connect(d);
+        g.connect(wet);
+        activeNodes.push(d, g, f);
+      });
+
+      inputNode.connect(dry);
+      const out = c.createGain();
+      dry.connect(out);
+      wet.connect(out);
+      activeNodes.push(dry, wet, out);
+      return out;
+    }
+
+    // ---- 创建带泛音的音色（模拟钢琴/管乐） ----
+    function createRichTone(freq, type, harmonics, now) {
+      const c = getCtx();
+      const out = c.createGain();
+      out.gain.value = 0;
+
+      // 基频
+      const fundamental = c.createOscillator();
+      fundamental.type = type;
+      fundamental.frequency.value = freq;
+      const fGain = c.createGain();
+      fGain.gain.value = 0.7;
+      fundamental.connect(fGain);
+      fGain.connect(out);
+      fundamental.start(now);
+      activeNodes.push(fundamental, fGain);
+
+      // 泛音列
+      harmonics.forEach(([mult, vol]) => {
+        const h = c.createOscillator();
+        h.type = 'sine';
+        h.frequency.value = freq * mult;
+        const hGain = c.createGain();
+        hGain.gain.value = vol;
+        h.connect(hGain);
+        hGain.connect(out);
+        h.start(now);
+        activeNodes.push(h, hGain);
+      });
+
+      return out;
+    }
+
+    // ---- 音符封装：带 ADSR 包络 ----
+    function scheduleNote(freq, startTime, duration, type, vel) {
+      const c = getCtx();
+      const osc = c.createOscillator();
+      osc.type = type || 'triangle';
+      osc.frequency.value = freq;
+
+      const env = c.createGain();
+      const a = Math.min(0.25, duration * 0.15);
+      const d = duration * 0.1;
+      const s = vel * 0.5;
+      const r = Math.min(duration * 0.4, 1.2);
+
+      env.gain.setValueAtTime(0, startTime);
+      env.gain.linearRampToValueAtTime(vel, startTime + a);
+      env.gain.linearRampToValueAtTime(s, startTime + a + d);
+      env.gain.setValueAtTime(s, startTime + duration - r);
+      env.gain.linearRampToValueAtTime(0, startTime + duration);
+
+      osc.connect(env);
+      osc.start(startTime);
+      osc.stop(startTime + duration + 0.05);
+      activeNodes.push(osc, env);
+      return env;
+    }
+
+    // ---- 粉红噪音 ----
+    function createPinkNoiseBuf(duration) {
+      const c = getCtx();
+      const len = c.sampleRate * duration;
+      const buf = c.createBuffer(1, len, c.sampleRate);
+      const d = buf.getChannelData(0);
       let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
-      for (let i = 0; i < bufSize; i++) {
-        const white = Math.random() * 2 - 1;
-        b0 = 0.99886 * b0 + white * 0.0555179;
-        b1 = 0.99332 * b1 + white * 0.0750759;
-        b2 = 0.96900 * b2 + white * 0.1538520;
-        b3 = 0.86650 * b3 + white * 0.3104856;
-        b4 = 0.55000 * b4 + white * 0.5329522;
-        b5 = -0.7616 * b5 - white * 0.0168980;
-        data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
-        b6 = white * 0.115926;
+      for (let i = 0; i < len; i++) {
+        const w = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + w * 0.0555179;
+        b1 = 0.99332 * b1 + w * 0.0750759;
+        b2 = 0.96900 * b2 + w * 0.1538520;
+        b3 = 0.86650 * b3 + w * 0.3104856;
+        b4 = 0.55000 * b4 + w * 0.5329522;
+        b5 = -0.7616 * b5 - w * 0.0168980;
+        d[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11;
+        b6 = w * 0.115926;
       }
       return buf;
     }
 
-    // ---- 各处方音效 ----
-
-    // 处方1：深睡眠修复 — 低频载波 + 双耳节拍 + 呼吸调制
+    // ======== 处方1：深睡眠修复 — 和弦铺底 + 双耳节拍 + 呼吸律动 ========
     function startDeepSleep() {
       stopAll();
       ensureResumed();
@@ -306,45 +393,79 @@
       const now = c.currentTime;
       const dur = 3600;
 
-      // 左耳 200Hz 载波
+      // --- 混响总线 ---
+      const reverbBus = c.createGain();
+      reverbBus.gain.value = 0.3;
+      const reverbOut = createReverb(reverbBus, 0.5, 3);
+
+      // --- 双耳节拍层：左200Hz / 右204Hz → 4Hz δ波 ---
       const oscL = c.createOscillator();
       oscL.type = 'sine';
       oscL.frequency.value = 200;
       const gainL = c.createGain();
-      gainL.gain.value = 0;
       const panL = c.createStereoPanner();
-      panL.pan.value = -0.7;
-      oscL.connect(gainL);
-      gainL.connect(panL);
+      panL.pan.value = -0.6;
+      oscL.connect(gainL); gainL.connect(panL); panL.connect(reverbOut);
       panL.connect(masterGain);
 
-      // 右耳 204Hz → 产生 4Hz 双耳节拍
       const oscR = c.createOscillator();
       oscR.type = 'sine';
       oscR.frequency.value = 204;
       const gainR = c.createGain();
-      gainR.gain.value = 0;
       const panR = c.createStereoPanner();
-      panR.pan.value = 0.7;
-      oscR.connect(gainR);
-      gainR.connect(panR);
+      panR.pan.value = 0.6;
+      oscR.connect(gainR); gainR.connect(panR); panR.connect(reverbOut);
       panR.connect(masterGain);
 
-      // 低频底噪层 ~62Hz
+      // --- 和弦铺底层 ---
+      // C大调：I(CEG) → vi(ACE) → IV(FAC) → V(GBD) 缓慢切换
+      const chordProgression = [
+        [130.81, 164.81, 196.00],   // C3 E3 G3  (I)
+        [220.00, 261.63, 329.63],   // A3 C4 E4  (vi)
+        [174.61, 220.00, 261.63],   // F3 A3 C4  (IV)
+        [196.00, 246.94, 293.66],   // G3 B3 D4  (V)
+      ];
+      const chordDuration = 16;
+      const numChords = Math.floor(dur / chordDuration);
+
+      for (let i = 0; i < numChords; i++) {
+        const chord = chordProgression[i % 4];
+        const t = now + i * chordDuration;
+        chord.forEach(freq => {
+          // 用三角波 + 低通滤波 = 温暖的铺底音色
+          const osc = c.createOscillator();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          const filt = c.createBiquadFilter();
+          filt.type = 'lowpass';
+          filt.frequency.value = 400;
+          filt.Q.value = 0.3;
+          const g = c.createGain();
+          const amp = 0.025;
+          g.gain.setValueAtTime(0, t);
+          g.gain.linearRampToValueAtTime(amp, t + 3);
+          g.gain.setValueAtTime(amp, t + chordDuration - 3);
+          g.gain.linearRampToValueAtTime(0, t + chordDuration);
+          osc.connect(filt); filt.connect(g); g.connect(reverbBus);
+          osc.start(t); osc.stop(t + chordDuration + 0.1);
+          activeNodes.push(osc, filt, g);
+        });
+      }
+
+      // --- 低频共振层 ~55Hz ---
       const oscLow = c.createOscillator();
       oscLow.type = 'sine';
-      oscLow.frequency.value = 62;
+      oscLow.frequency.value = 55;
       const gainLow = c.createGain();
-      gainLow.gain.value = 0;
-      oscLow.connect(gainLow);
+      oscLow.connect(gainLow); gainLow.connect(reverbBus);
       gainLow.connect(masterGain);
 
-      // 呼吸调制 LFO ~0.1Hz (6次/分钟)
+      // --- 呼吸律动 LFO ~0.1Hz (6次/分钟) ---
       const lfo = c.createOscillator();
       lfo.type = 'sine';
       lfo.frequency.value = 0.1;
       const lfoGain = c.createGain();
-      lfoGain.gain.value = 0.12;
+      lfoGain.gain.value = 0.1;
       lfo.connect(lfoGain);
       lfoGain.connect(gainL.gain);
       lfoGain.connect(gainR.gain);
@@ -352,89 +473,101 @@
 
       // 淡入
       gainL.gain.setValueAtTime(0, now);
-      gainL.gain.linearRampToValueAtTime(0.14, now + 3);
+      gainL.gain.linearRampToValueAtTime(0.1, now + 4);
       gainR.gain.setValueAtTime(0, now);
-      gainR.gain.linearRampToValueAtTime(0.14, now + 3);
+      gainR.gain.linearRampToValueAtTime(0.1, now + 4);
       gainLow.gain.setValueAtTime(0, now);
-      gainLow.gain.linearRampToValueAtTime(0.08, now + 3);
+      gainLow.gain.linearRampToValueAtTime(0.06, now + 5);
 
       oscL.start(now); oscR.start(now); oscLow.start(now); lfo.start(now);
       oscL.stop(now + dur); oscR.stop(now + dur); oscLow.stop(now + dur); lfo.stop(now + dur);
 
-      activeNodes = [oscL, oscR, oscLow, lfo, gainL, gainR, gainLow, lfoGain, panL, panR];
+      activeNodes.push(oscL, oscR, oscLow, lfo, gainL, gainR, gainLow, lfoGain, panL, panR, reverbBus);
       isRunning = true;
     }
 
-    // 处方2：午后焦虑舒缓 — 五声音阶 + 雨声
+    // ======== 处方2：午后焦虑舒缓 — 钢琴旋律 + 氛围铺底 + 雨声 ========
     function startAnxietyRelief() {
       stopAll();
       ensureResumed();
       const c = getCtx();
       const now = c.currentTime;
+      const dur = 3600;
 
-      // 五声音阶频率 (D大调：D E F# A B)
-      const scale = [293.66, 329.63, 369.99, 440.00, 493.88];
-      const noteGain = c.createGain();
-      noteGain.gain.value = 0.09;
-      noteGain.connect(masterGain);
+      // --- 混响总线 ---
+      const reverbBus = c.createGain();
+      reverbBus.gain.value = 0.35;
+      const reverbOut = createReverb(reverbBus, 0.45, 3);
 
-      const noteNodes = [];
-      // 随机漫步五声音阶
-      let noteIdx = 2;
-      const noteDuration = 3.5;
-      const totalDuration = 3600;
-      const numNotes = Math.floor(totalDuration / noteDuration);
+      // --- C大调五声音阶旋律 C D E G A ---
+      const penta = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00];
+      const melodyPattern = [
+        [2,0],[4,1],[3,0.5],[1,0.5],[0,2],[2,1],[4,2],[3,1],
+        [5,0],[4,1],[2,0.5],[0,0.5],[1,3],[3,1],[4,2],
+        [2,1.5],[0,0.5],[1,1],[3,2],[4,1],[5,1],[3,2],
+        [1,1],[2,0.5],[4,0.5],[3,3],
+      ];
 
-      for (let i = 0; i < numNotes; i++) {
-        const t = now + i * noteDuration;
-        const freq = scale[noteIdx];
-
-        const osc = c.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-
-        const g = c.createGain();
-        g.gain.setValueAtTime(0, t);
-        g.gain.linearRampToValueAtTime(0.055, t + 1.2);
-        g.gain.setValueAtTime(0.055, t + noteDuration - 1.0);
-        g.gain.linearRampToValueAtTime(0, t + noteDuration);
-
-        osc.connect(g);
-        g.connect(noteGain);
-        osc.start(t);
-        osc.stop(t + noteDuration + 0.1);
-
-        activeNodes.push(osc, g);
-
-        // 随机漫步
-        const moves = [-1, 0, 1, 1, 2];
-        noteIdx = Math.max(0, Math.min(4, noteIdx + moves[Math.floor(Math.random() * moves.length)]));
+      let melodyTime = 0;
+      for (let loop = 0; loop < Math.ceil(dur / 40); loop++) {
+        melodyPattern.forEach(([idx, beats]) => {
+          const t = now + melodyTime;
+          if (t >= now + dur) return;
+          const freq = penta[idx % penta.length];
+          const noteLen = beats * 1.2;
+          const env = scheduleNote(freq, t, noteLen, 'triangle', 0.08);
+          env.connect(reverbOut);
+          env.connect(masterGain);
+          melodyTime += beats * 1.2;
+        });
       }
 
-      // 模拟雨声（滤波白噪音）
-      const noiseBuf = createPinkNoise(60);
+      // --- 氛围铺底：缓慢和弦 ---
+      const padChords = [
+        [261.63, 329.63, 392.00],  // C E G
+        [220.00, 261.63, 329.63],  // A C E
+        [196.00, 246.94, 329.63],  // G B D
+        [174.61, 220.00, 261.63],  // F A C
+      ];
+      const padLen = 20;
+      for (let i = 0; i < Math.floor(dur / padLen); i++) {
+        const chord = padChords[i % 4];
+        const t = now + i * padLen;
+        chord.forEach(freq => {
+          const osc = c.createOscillator();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          const g = c.createGain();
+          g.gain.setValueAtTime(0, t);
+          g.gain.linearRampToValueAtTime(0.018, t + 4);
+          g.gain.setValueAtTime(0.018, t + padLen - 4);
+          g.gain.linearRampToValueAtTime(0, t + padLen);
+          osc.connect(g); g.connect(reverbBus);
+          osc.start(t); osc.stop(t + padLen + 0.1);
+          activeNodes.push(osc, g);
+        });
+      }
+
+      // --- 雨声 ---
+      const noiseBuf = createPinkNoiseBuf(60);
       const noiseSrc = c.createBufferSource();
       noiseSrc.buffer = noiseBuf;
       noiseSrc.loop = true;
-      const noiseFilter = c.createBiquadFilter();
-      noiseFilter.type = 'lowpass';
-      noiseFilter.frequency.value = 800;
-      noiseFilter.Q.value = 0.5;
-      const noiseGain = c.createGain();
-      noiseGain.gain.setValueAtTime(0, now);
-      noiseGain.gain.linearRampToValueAtTime(0.04, now + 2);
+      const nf = c.createBiquadFilter();
+      nf.type = 'lowpass';
+      nf.frequency.value = 600;
+      const ng = c.createGain();
+      ng.gain.setValueAtTime(0, now);
+      ng.gain.linearRampToValueAtTime(0.025, now + 3);
+      noiseSrc.connect(nf); nf.connect(ng); ng.connect(masterGain);
+      noiseSrc.start(now); noiseSrc.stop(now + dur);
+      activeNodes.push(noiseSrc, nf, ng);
 
-      noiseSrc.connect(noiseFilter);
-      noiseFilter.connect(noiseGain);
-      noiseGain.connect(masterGain);
-      noiseSrc.start(now);
-      noiseSrc.stop(now + totalDuration);
-
-      activeNodes.push(noiseSrc, noiseFilter, noiseGain, noteGain);
+      activeNodes.push(reverbBus);
       isRunning = true;
     }
 
-    // 处方3：专注力提升 — 粉红噪音 + α波 (10Hz) 脉冲调制
+    // ======== 处方3：专注力提升 — 暖粉噪 + 轻柔节拍引导 + α波调制 ========
     function startFocus() {
       stopAll();
       ensureResumed();
@@ -442,35 +575,68 @@
       const now = c.currentTime;
       const dur = 3600;
 
-      const noiseBuf = createPinkNoise(60);
+      // --- 粉红噪音基底 ---
+      const noiseBuf = createPinkNoiseBuf(60);
       const noiseSrc = c.createBufferSource();
       noiseSrc.buffer = noiseBuf;
       noiseSrc.loop = true;
+      const nf = c.createBiquadFilter();
+      nf.type = 'lowpass';
+      nf.frequency.value = 2000;
+      const ng = c.createGain();
+      ng.gain.setValueAtTime(0, now);
+      ng.gain.linearRampToValueAtTime(0.06, now + 3);
 
-      // α波 LFO @ 10Hz
+      // --- α波 LFO @ 10Hz 调制噪声增益 ---
       const lfo = c.createOscillator();
       lfo.type = 'sine';
       lfo.frequency.value = 10;
       const lfoGain = c.createGain();
-      lfoGain.gain.value = 0.03;
+      lfoGain.gain.value = 0.015;
       lfo.connect(lfoGain);
+      lfoGain.connect(ng.gain);
 
-      const noiseGain = c.createGain();
-      noiseGain.gain.setValueAtTime(0, now);
-      noiseGain.gain.linearRampToValueAtTime(0.07, now + 2);
+      noiseSrc.connect(nf); nf.connect(ng); ng.connect(masterGain);
+      noiseSrc.start(now); lfo.start(now);
+      noiseSrc.stop(now + dur); lfo.stop(now + dur);
 
-      // LFO 调制噪音增益 → 产生 10Hz 波动
-      lfoGain.connect(noiseGain.gain);
+      // --- 轻柔稳定节拍 ~40BPM (每1.5秒一下) ---
+      const tickHz = 500;
+      for (let i = 0; i < Math.floor(dur / 1.5); i++) {
+        const t = now + i * 1.5;
+        if (t >= now + dur) break;
+        const osc = c.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = tickHz;
+        const g = c.createGain();
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.03, t + 0.02);
+        g.gain.linearRampToValueAtTime(0, t + 0.15);
+        const pan = c.createStereoPanner();
+        pan.pan.value = (i % 2 === 0) ? -0.3 : 0.3;
+        osc.connect(g); g.connect(pan); pan.connect(masterGain);
+        osc.start(t); osc.stop(t + 0.2);
+        activeNodes.push(osc, g, pan);
+      }
 
-      noiseSrc.connect(noiseGain);
-      noiseGain.connect(masterGain);
+      // --- 微妙的高频点缀 ---
+      const hiOsc = c.createOscillator();
+      hiOsc.type = 'sine';
+      hiOsc.frequency.value = 800;
+      const hiGain = c.createGain();
+      const hiLfo = c.createOscillator();
+      hiLfo.type = 'sine';
+      hiLfo.frequency.value = 0.07;
+      const hiLfoGain = c.createGain();
+      hiLfoGain.gain.value = 0.008;
+      hiLfo.connect(hiLfoGain);
+      hiLfoGain.connect(hiGain.gain);
+      hiGain.gain.value = 0.005;
+      hiOsc.connect(hiGain); hiGain.connect(masterGain);
+      hiOsc.start(now); hiLfo.start(now);
+      hiOsc.stop(now + dur); hiLfo.stop(now + dur);
 
-      noiseSrc.start(now);
-      lfo.start(now);
-      noiseSrc.stop(now + dur);
-      lfo.stop(now + dur);
-
-      activeNodes = [noiseSrc, lfo, noiseGain, lfoGain];
+      activeNodes.push(noiseSrc, nf, ng, lfo, lfoGain, hiOsc, hiGain, hiLfo, hiLfoGain);
       isRunning = true;
     }
 
@@ -517,9 +683,9 @@
 
   // 音效说明映射
   const soundBadgeText = {
-    sleep: '🔊 实时合成：双耳节拍 (4Hz) + 低频共振 (62Hz) + 呼吸调制',
-    relief: '🔊 实时合成：五声音阶漫步 + 模拟雨声白噪音',
-    focus: '🔊 实时合成：粉红噪音 + α脑波 (10Hz) 脉冲调制',
+    sleep: '🎵 实时音乐：C大调和弦铺底 + 4Hz双耳节拍 + 6次/分钟呼吸律动',
+    relief: '🎵 实时音乐：五声音阶钢琴旋律 + 氛围和弦 + 自然雨声',
+    focus: '🎵 实时音乐：暖调粉红噪音 + α脑波调制 + 40BPM轻节拍引导',
   };
 
   function openPlayer(planIndex, soundOverride) {
